@@ -1,0 +1,594 @@
+---
+title: "Rotten Tomatoes Data Visualization"
+author: "Diva K"
+format:
+  html:
+    toc: true
+    df-print: paged
+    number-sections: true
+    embed-resources: true
+    self-contained: true
+---
+
+```{r setup, include=FALSE}
+# clear-up the environment
+rm(list = ls())
+
+# chunk options
+knitr::opts_chunk$set(
+  fig.align = "center",
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+![Photo by <a href="https://unsplash.com/@tamanna_rumee?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Tamanna Rumee</a> on <a href="https://unsplash.com/photos/nswz6tIpgZk?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>](assets/tamanna-rumee-nswz6tIpgZk-unsplash.jpg)
+
+# Introduction
+
+Rotten Tomatoes merupakan situs web ulasan film dan acara TV. Nama "Rotten Tomatoes" ini berhubungan dengan istilah yang digunakan untuk menilai suatu tayangan. Ketika suatu film dinilai bagus, maka film tersebut dikatakan *fresh* atau segar, sementara jika dinilai jelek, film tersebut dikatakan *rotten* atau busuk.
+
+Tidak hanya menampung ulasan dari penonton umum, Rotten Tomatoes juga mengumpulkan ulasan dari para kritikus terkemuka. Bahkan penilaian dari para kritikus ini memiliki penamaan sistem tersendiri, yaitu Tomatometer®. Hal ini menyebabkan Rotten Tomatoes menjadi salah satu situs ulasan industri hiburan paling terpercaya di dunia.
+
+Kali ini kita akan membuat visualisasi dari data ulasan Rotten Tomatoes! Data yang akan kita gunakan dapat diakses dari [Kaggle: Rotten Tomatoes Top Movies Ratings and Technical](https://www.kaggle.com/datasets/thedevastator/rotten-tomatoes-top-movies-ratings-and-technical).
+
+# Data Preparation
+
+## Prerequisites
+
+### Importing Libraries
+
+```{r}
+# for data wrangling
+library(reshape2)
+# for datetime-related data processing
+library(lubridate)
+# dplyr (function piping), tidyr (data cleaning), and ggplot2 (visualization)
+library(tidyverse)
+```
+
+### Importing Dataset
+
+```{r}
+rt <- read.csv("data/rotten_tomatoes_top_movies.csv")
+```
+
+Mari kita inspeksi data kita menggunakan `head()`.
+
+```{r}
+head(rt)
+```
+
+Dari inspeksi data di atas, dapat kita lihat bahwa data kita terdiri dari beberapa kolom berikut.
+
+| **Nama Kolom**                | **Deskripsi**                                      |
+|--------------------------|----------------------------------------------|
+| **X**                         | Indeks dari 0 (Integer)                            |
+| **title**                     | Judul film. (Character)                            |
+| **year**                      | Tahun rilis film. (Integer)                        |
+| **synopsis**                  | Ringkasan singkat film. (Character)                |
+| **critic_score**              | Skor film dari para kritikus. (Integer)            |
+| **people_score**              | Skor film dari para penonton umum. (Integer)       |
+| **consensus**                 | Ringkasan ulasan dari film. (Character)            |
+| **total_reviews**             | Jumlah kritikus yang mengulas. (Integer)           |
+| **total_ratings**             | Jumlah penonton umum yang mengulas. (Integer)      |
+| **type**                      | Jenis film. (Character)                            |
+| **genre**                     | Genre film. (Character)                            |
+| **rating**                    | *Rating* film (PG, R, dsb.). (Character)           |
+| **original_language**         | Bahasa asli film. (Character)                      |
+| **director**                  | Sutradara film. (Character)                        |
+| **producer**                  | Produser film. (Character)                         |
+| **writer**                    | Penulis naskah film. (Character)                   |
+| **release_date\_(theaters)**  | Tanggal rilis film di teater. (Date)               |
+| **release_date\_(streaming)** | Tanggal rilis film di media *streaming*. (Date)    |
+| **box_office\_(gross_usa)**   | Total pendapatan kotor box office di AS. (Integer) |
+| **runtime**                   | Durasi film dalam menit. (Integer)                 |
+| **production_co**             | Perusahaan produksi film. (Character)              |
+| **sound_mix**                 | Teknologi suara dalam film. (Character)            |
+| **aspect_ratio**              | Rasio aspek film. (Character)                      |
+| **view_the_collection**       | Koleksi film. (Character)                          |
+| **crew**                      | Anggota kru yang terlibat dalam film. (Character)  |
+| **link**                      | Tautan ke situs web Rotten Tomatoes. (Character)   |
+
+# Data Processing
+
+Dari deskripsi dan hasil inspeksi di atas, kita tidak akan membutuhkan kolom `X` dan kolom `link` karena isinya hanya berupa indeks dan tautan ke website Rotten Tomatoes. Kedua kolom ini tidak terlalu informatif dan dapat kita buang.
+
+```{r}
+rt <-
+  rt %>% 
+  select(-c(X, link))
+```
+
+## Duplicates
+
+Setelah memeriksa data yang hilang, kita juga perlu memeriksa data yang duplikat. Hal ini dapat dilakukan dengan fungsi `duplicated()`. Untuk melihat jumlah baris yang duplikat, kita dapat membalut fungsi `duplicated()` dengan fungsi `sum()`.
+
+```{r}
+sum(duplicated(rt))
+```
+
+Angka 0 di atas menandakan bahwa tidak ada baris yang identik. Namun, karena satu film memiliki satu halaman review pada Rotten Tomatoes, maka seharusnya tidak ada judul film (`title`) yang duplikat. Mari kita lihat apakah ada judul yang duplikat dengan subset kolom `title`.
+
+```{r}
+sum(duplicated(rt$title, ))
+```
+
+Ternyata terdapat 628 judul yang duplikat. Mari kita lihat judul apa saja yang merupakan duplikat dengan memasukkan fungsi `duplocated()` sebagai conditional subset dari dataframe `rt`.
+
+```{r}
+rt[duplicated(rt$title), ]
+```
+
+Mari kita lihat dua contoh judul yang duplikat, yaitu film Spider-Man: Into the Spider-Verse dan The LEGO Movie
+
+```{r}
+rt[rt$title == "Spider-Man: Into the Spider-Verse", ]
+```
+
+```{r}
+rt[rt$title == "The LEGO Movie", ]
+```
+
+Ternyata seluruh kolomnya berisi informasi yang sama, kecuali untuk kolom `type`, dan kolom ini telah direpresentasikan oleh kolom genre. Dari kedua contoh di atas, tipe genre yang paling sesuai adalah paling bawah, maka kita akan menyimpan data-data duplikat dengan mengambil *entry* terbawahnya. Hal ini dapat dicapai dengan melakukan *conditional subsetting* dengan kondisi sebagai berikut.
+
+```{r}
+rt_clean <- rt[!duplicated(rt$title, fromLast = TRUE), ]
+rt_clean
+```
+
+Tanda `!` berarti "bukan". Ketika dimasukkan ke dalam *conditional subsetting*, berarti kita hanya ingin mengambil baris-baris yang "bukan duplikasi". Parameter `fromLast = TRUE` berarti kita ingin mengambil baris yang paling akhir dari baris-baris yang duplikat.
+
+Mengingat kolom `type` berisi informasi yang sama dengan kolom `genre`, maka kita hanya perlu memilih salah satu di antaranya. Kali ini kita memilih kolom `type` karena kolom `genre` berisi lebih dari satu jenis genre untuk tiap baris, data seperti ini sulit diolah dan divisualisasikan. Oleh karena itu kita akan menghapus kolom `genre` dengan fungsi `subset()`.
+
+```{r}
+rt_clean <- subset(rt_clean, select = -genre)
+head(rt_clean)
+```
+
+## Missing Values
+
+Mari kita lihat struktur data kita menggunakan fungsi `str()`.
+
+```{r}
+str(rt_clean)
+```
+
+Kita dapat menampilkan *output* yang serupa dan lebih rapi menggunakan fungsi `glimpse()` dari *library* dplyr.
+
+```{r}
+glimpse(rt_clean)
+```
+
+Terlihat bahwa *output* dari `glimpse()` tidak sepanjang `str()` sehingga lebih mudah dibaca dengan tetap memberi informasi yang sama.
+
+Dari hasil di atas, kita mendapatkan informasi bahwa data kita terdiri dari 982 baris dan 26 kolom. Selain itu, ternyata terdapat beberapa kolom yang berisi karakter kosong (`""`), hal ini dapat menyebabkan data-data tersebut tidak terbaca sebagai *missing value*. Kita dapat mengubah karakter kosong tersebut menjadi NA.
+
+```{r}
+rt_clean[rt_clean == ""] <- NA
+glimpse(rt_clean)
+```
+
+Sekarang mari kita lihat jumlah *missing value* pada data kita.
+
+```{r}
+colSums(is.na(x = rt_clean))
+```
+
+Mengingat bahwa data kita terdiri dari 982 baris, maka mari kita hapus kolom dengan *missing value* yang terlalu banyak (di atas 200 baris), yaitu `consensus`, `rating`, `writer`, `release_date_.theaters.`, `box_office_.gross_usa.`, `sound_mix`, `aspect_ratio`, dan `view_the_collection`.
+
+```{r}
+rt_clean <-
+subset(rt_clean, select = -c(consensus, rating, writer, release_date_.theaters.,
+                             box_office_.gross_usa., sound_mix, aspect_ratio,
+                             view_the_collection))
+```
+
+Mari kita lihat kembali kolom yang berisi missing values.
+
+```{r}
+colSums(is.na(x = rt_clean))
+```
+
+Dan kita inspeksi kembali isi data kita.
+
+```{r}
+rt_clean
+```
+
+Selanjutnya mari kita imputasi *missing value* untuk data bertipe character dengan kata "Unknown", kecuali untuk kolom `release_date_.streaming.` dan `runtime` karena kolom tersebut berisi tanggal dan durasi waktu. *Missing value* dalam kolom `original_language` akan kita isi dengan "Unknown language" karena ternyata terdapat data "Unknown language" dalam kolom tersebut.
+
+Untuk melakukan imputasi *missing value*, kita akan menggunakan fungsi `replace_na()` dari *library* **tidyr**. Tanda tilde (\~) digunakan untuk menunjukkan bahwa `replace_na()` merupakan suatu fungsi. Fungsi `replace_na()` ini kita masukkan ke dalam fungsi `mutate_at()` agar dapat diaplikasikan pada banyak kolom.
+
+```{r}
+rt_clean <-
+rt_clean %>% 
+  mutate_at(c("synopsis", "director", "producer", "production_co"), 
+            ~replace_na(., "Unknown")) %>% 
+  mutate_at("original_language",
+            ~replace_na(., "Unknown language"))
+```
+
+Cek kembali *missing values*
+
+```{r}
+colSums(is.na(x = rt_clean))
+```
+
+Selanjutnya mari kita lakukan imputasi untuk kolom numerik, yaitu `people_score`. Pertama kita lihat terlebih dahulu persebaran data dari kolom `people_score` menggunakan fungsi `summary()`.
+
+```{r}
+summary(rt_clean$people_score)
+```
+
+Dapat kita lihat bahwa nilai median dan mean tidak berbeda jauh, namun ada indikasi data *left skewed* karena nilai minimum nya yang sangat jauh dengan kuartil pertama. Selain itu, hampir tidak mungkin seseorang memberikan nilai yang benar-benar 0 untuk sebuah film, oleh karena itu lebih baik kita isi *missing value* ini dengan nilai **median**.
+
+```{r}
+rt_clean$people_score[is.na(rt_clean$people_score)] <- median(rt_clean$people_score, na.rm = TRUE)
+summary(rt_clean$people_score)
+```
+
+Setelah imputasi dengan median, dapat dilihat bahwa informasi persebaran data kita tidak berubah.
+
+## Data Types
+
+Kini mari kita ubah tipe data dalam dataset kita agar dapat divisualisasikan dengan baik. Mari kita lihat kembali struktur data kita dengan `glimpse()`.
+
+```{r}
+glimpse(rt_clean)
+```
+
+Kolom dengan tipe data yang perlu diganti adalah:
+
+-   `total_ratings` → factor
+
+-   `type` → factor
+
+-   `original_language` → factor
+
+-   `release_date_.streaming.` → date
+
+```{r}
+# mengganti tipe data menjadi factor
+cols <- c("total_ratings", "type", "original_language")
+rt_clean[cols] <- lapply(X = rt_clean[cols], FUN = as.factor)
+
+rt_clean[cols]
+```
+
+```{r}
+# mengganti tipe data menjadi date
+rt_clean$release_date_.streaming. <- mdy(rt_clean$release_date_.streaming.)
+
+rt_clean["release_date_.streaming."]
+```
+
+# Exploratory Data Analysis
+
+Mari kita lihat kembali data kita
+
+```{r}
+head(rt_clean)
+```
+
+Pertama-tama, mari kita lihat seperti apa persebaran data kita dari segi tahun penayangan. Kita dapat melihatnya dengan fungsi `summary()`.
+
+```{r}
+summary(rt_clean$year)
+```
+
+Data kita berisi film dari tahun 1919 hingga 2020, dan terpusat di tahun 2007. Mari kita lihat frekuensinya secara visual dengan melakukan **exploratory visualization** menggunakan fungsi `hist()`.
+
+```{r}
+hist(rt_clean$year)
+```
+
+Ternyata sebagian besar film, bakan lebih dari 600 film, dibuat dari tahun 2000 hingga 2020.
+
+------------------------------------------------------------------------
+
+Mari kita lihat jumlah film berdasarkan tipe genrenya (`type`) dengan fungsi `table()`.
+
+```{r}
+table(rt_clean$type)
+```
+
+Tabel di atas cukup sulit dibaca, mari kita sortir agar nilainya terurutkan dari tertinggi ke terendah dengan fungsi `sort()` dan memasukkan parameter `decreasing = T` .
+
+```{r}
+sort(table(rt_clean$type), decreasing = T)
+```
+
+Ternyata film dengan tipe Science Fiction & Fantasy memiliki jumlah paling banyak dan Action & Adventure memiliki jumlah paling sedikit, namun informasi lainnya cukup sulit untuk didapatkan. Mari kita lakukan visualisasi dengan barchart untuk melihat ranking tiap tipe.
+
+```{r}
+plot(rt_clean$type)
+```
+
+Visualisasi di atas kurang jelas karena tidak semua tipe ditampilkan. Kita akan memperbaiki visualisasi ini pada bagian Expanatory Visualization. Sekarang, mari kita lihat apa saja film yang bertipe Science Fiction & Fantasy, yaitu tipe dengan jumlah film terbanyak.
+
+```{r}
+rt_clean[rt_clean$type == "Science Fiction & Fantasy", ]
+```
+
+Dari 10 data teratas, ternyata banyak film bertipe Science Fiction & Fantasy merupakan film Superhero! Mari kita lihat tahun berapa saja film-film ini dibuat.
+
+```{r}
+summary(rt_clean[rt_clean$type == "Science Fiction & Fantasy", "year"])
+```
+
+Ternyata film Science Fiction & Fantasy sudah dibuat sejak tahun 1922, dan banyak dibuat di sekitar tahun 2011.
+
+------------------------------------------------------------------------
+
+Kini mari kita lihat bahasa apa yang paling banyak digunakan dalam film yang telah direview Rotten Tomatoes.
+
+```{r}
+sort(table(rt_clean$original_language), decreasing = T)
+```
+
+Terlihat bahwa bahasa terbanyak adalah English (Inggris) diikuti Japanese (Jepang) dan French (Perancis). Dapat dilihat juga bahwa Rotten Tomatoes menampung film-film dari negara yang beragam, termasuk Indonesia. Bahkan beberapa film dengan bahasa yang cukup asing di telinga juga terdapat di situs Rotten Tomatoes, seperti bahasa Bambara yang merupakan bahasa penduduk [Republik Mali](https://en.wikipedia.org/wiki/Mali) dan Wolof yang merupakan bahasa etnik [Wolof](https://en.wikipedia.org/wiki/Wolof_people) dari Afrika Barat.
+
+------------------------------------------------------------------------
+
+Kita juga dapat mencari tahu siapa sutradara (`director`) dengan film terbanyak sejak 1919 hingga 2020. Agar hasil yang didapatkan tidak terlalu panjang, mari kita ambil 6 sutradara teratas dengan fungsi `head()`.
+
+```{r}
+head(sort(table(rt_clean$director), decreasing = T))
+```
+
+Ternyata bahkan sutradara terbanyak hanya memproduksi 14 film! Hal ini menunjukkan bahwa membuat suatu film tidaklah mudah. Alfred Hitchcock merupakan sutradara dengan film terbanyak, diikuti Steven Spielberg dan Howard Hawks. Mari kita lihat film-film yang mereka buat.
+
+```{r}
+rt_clean %>% 
+  filter(director %in% c("Alfred Hitchcock", "Steven Spielberg", "Howard Hawks")) %>% 
+  arrange(desc(year))
+```
+
+Sebagian besar film yang mereka produksi merupakan film yang cukup lawas. Hal ini menunjukkan bahwa beliau-beliau tersebut sangat produktif di tahun 90an.
+
+# Explanatory Visualization
+
+Mari kita buat visualisasi yang lebih rapi dan menarik menggunakan library `ggplot2`. Pertama, mari kita coba perbaiki barchart pada bagian Exploratory Data Analysis di atas. Mari kita buat dataframe dari tabel frekuensi yang telah kita buat sebelumnya.
+
+```{r}
+type_freq <- as.data.frame(table(rt_clean$type))
+type_freq
+```
+
+Kemudian kita masukkan dataframe di atas ke dalam kode visualisasi kita.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = Var1, y = Freq)) +
+  geom_col()
+```
+
+Panjang batang dalam visualisasi kita masih belum berurutan, mari kita urutkan dengan fungsi `reorder()`.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col()
+```
+
+Sudah berurutan! Tapi tipe film kita terlihat bertumpuk, selain itu visualisasi ranking lebih baik ditampilkan dengan horizontal barplot. Mari kita tukar sumbu x dengan sumbu y menggunakan fungsi `coord_flip()`.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col() +
+  coord_flip()
+```
+
+Jauh lebih baik! sekarang mari kita tambahkan informasi nilai frekuensi tiap tipe berupa teks pada bagian ujung batang menggunakan `geom_text()` dan masukkan `Freq` sebagai label.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col() +
+  geom_text(aes(label = Freq)) +
+  coord_flip()
+```
+
+Sekarang saatnya kita mengubah label pada sumbu x dan y. Kita akan mengganti label "Freq" menjadi "Frequency" dan mengganti label "reorder(Var1, Freq)" menjadi "Genre Type". Untuk mengganti & membuat label, kita dapat menggunakan fungsi `labs()`.
+
+Dalam fungsi `ggplot()`, "Freq" merupakan data untuk `y` sementara "reorder(Var1, Freq)" merupakan data untuk `x`, oleh karena itu dalam fungsi `labs()` kita perlu memasukkan label baru sesuai dengan `x` dan `y`-nya.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col() +
+  geom_text(aes(label = Freq)) +
+  coord_flip() +
+  
+  labs(x = "Genre Type",
+       y = "Frequency")
+```
+
+Hampir lengkap! Sekarang mari kita tambahkan judul dan subjudul agar audiens dapat mengetahui informasi apa yang terdapat dalam visualisasi ini. Seperti sebelumnya, kita akan menggunakan fungsi `labs()` dengan mengisi parameter `title` untuk judul dan `subtitle` untuk subjudul.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col() +
+  geom_text(aes(label = Freq)) +
+  coord_flip() +
+  
+  labs(x = "Genre Type",
+       y = "Frequency",
+     title = "Rotten Tomatoes: Critic Score Distribution",
+     subtitle = "Year of 1919 to 2020")
+```
+
+Untuk membuat visualisasi lebih ✨berwarna✨, mari kita ubah isi warna batang dengan warna [Blue Gray](https://htmlcolorcodes.com/colors/blue-gray/ "Blue Gray Color") yang memiliki kode warna `#7393B3`. Kita dapat melakukannya dengan memasukkan kode warna tersebut ke parameter `fill` dalam `geom_col()`.
+
+Selain itu mari ubah pula warna teks angka frekuensi menjadi warna [Charcoal](https://htmlcolorcodes.com/colors/charcoal/ "Charcoal Color") agar tidak terlalu hitam dan lebih senada dengan teks tipe-tipe film. Kita bisa memasukkan kode warnanya ke parameter `color` dalam `geom_text()`.
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col(fill = "#7393B3") +
+  geom_text(aes(label = Freq), color = "#36454F") +
+  coord_flip() +
+  
+  labs(x = "Genre Type",
+       y = "Frequency",
+       title = "Rotten Tomatoes: Critic Score Distribution",
+       subtitle = "Year of 1919 to 2020")
+```
+
+Agar batang barplot kita lebih terlihat, mari kita gunakan tema yang lebih *clean*, yaitu [`theme_light()`](https://ggplot2.tidyverse.org/reference/ggtheme.html "ggplot2 Themes").
+
+```{r}
+ggplot(data = type_freq, mapping = aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_col(fill = "#7393B3") +
+  geom_text(aes(label = Freq), color = "#36454F") +
+  coord_flip() +
+  
+  labs(x = "Genre Type",
+       y = "Frequency",
+       title = "Rotten Tomatoes: Critic Score Distribution",
+       subtitle = "Year of 1919 to 2020") +
+  
+  theme_light()
+```
+
+Mantap! Dari visualisasi di atas, dapat terlihat lebih jelas bahwa Science Fiction & Fantasy merupakan tipe genre film yang paling banyak dibuat sepanjang tahun 1919 hingga 2020, diikuti Romance dan Special Interest.
+
+------------------------------------------------------------------------
+
+Kini mari kita lihat distribusi nilai yang diberikan oleh para kritikus film (`critic_score`) dan para penonton awam (`people_score`). Pertama, mari buat histogram dari `critic_score` terlebih dahulu.
+
+```{r}
+ggplot(data = rt_clean, mapping = aes(x = critic_score)) +
+  geom_histogram(fill = "#7393B3") +
+  
+  labs(x = "Critic Score",
+     y = "Frequency",
+     title = "Rotten Tomatoes: Critic Score Distribution",
+     subtitle = "Year of 1919 to 2020")+
+  
+  theme_light()
+```
+
+Terlihat bahwa para kritikus condong memberikan nilai yang tinggi, yairu di sekitar 90 s.d. 100. Meskipun demikian, beberapa kritikus berani memberi nilai di bawah 25. Sekarang mari kita lihat histogram dari `people_score`.
+
+```{r}
+ggplot(data = rt_clean, mapping = aes(x = people_score)) +
+  geom_histogram(fill = "#7393B3") +
+  
+  labs(x = "People Score",
+     y = "Frequency",
+     title = "Rotten Tomatoes: People Score Distribution",
+     subtitle = "Year of 1919 to 2020")+
+  
+  theme_light()
+```
+
+Terlihat bahwa penilaian penonton awam justru lebih variatif dan cenderung lebih rendah, yaitu di sekitar 70 s.d. 98. Meskipun demikian, sangat jarang sekali ada penonton yang memberi nilai di bawah 25. Agar dapat membandingkan `critic_score` dan `people_score` dengan lebih terperinci, mari kita gunakan boxplot. Namun sebelum itu, kita perlu melakukan *data wrangling* terlebih dahulu, yaitu dengan melakukan **melt** agar `critic_score` dan `people_score` dapat menjadi satu kolom.
+
+```{r}
+score_melt <-
+  melt(rt_clean[c("critic_score", "people_score")])
+
+levels(score_melt$variable) <- c("Critic Score", "People Score")
+
+score_melt
+```
+
+```{r}
+ggplot(data = score_melt, mapping = aes(x = variable, y = value)) +
+  geom_boxplot(fill = "#7393B3", color = "#36454F") +
+  coord_flip() +
+  
+  labs(x = "",
+       y = "Score",
+       title = "Rotten Tomatoes: Score Distribution Comparison",
+       subtitle = "People Score vs. Critic Score\nYear of 1919 to 2020") +
+  
+  theme_light()
+```
+
+Dari visualisasi di atas, kita dapat menarik informasi:
+
+-   **Median**, median skor dari penonton umum lebih rendah daripada skor dari kritikus
+
+-   **IQR/Lebar Kotak**, kotak People Score lebih lebar daripada kotak Critic Score, yang berarti penilaian dari penonton umum lebih variatif sementara penilaian dari kritikus lebih terpusat
+
+-   **Outlier**, outlier pada skor penonton umum lebih sedikit daripada outlier pada skor kritikus, yang berarti hanya ada sedikit penonton umum yang memberikan nilai rendah
+
+Selanjutnya mari kita lihat bagaimana hubungan antara jumlah kritikus (`total_reviews`) dengan penilaian mereka (`critic_score`). Untuk melihat hubungan antara dua variabel numerik, kita dapat membuat **scatter plot** menggunakan `geom_point()`.
+
+```{r}
+ggplot(data = rt_clean, mapping = aes(x = total_reviews, y = critic_score)) +
+  geom_point(color = "#6082B6") +
+  
+  labs(x = "Total Reviews",
+       y = "Critic Score",
+       title = "Rotten Tomatoes: Reviewer Amount and Their Score",
+       subtitle = "Year of 1919 to 2020") +
+  
+  theme_light()
+```
+
+Terlihat bahwa sebagian besar film memiliki jumlah reviewer kurang dari 200 orang, dan sebagian besar orang memberi nilai di atas 75. Film-film dengan nilai kecil (\< 50) umumnya direview oleh jumlah orang yang sedikit (kurang dari 300 orang). Kemungkinan hal ini terjadi karena beberapa kritikus pertama yang telah menonton film-film ini memberikan review rendah, sehingga orang-orang yang membaca review sebelum menonton akhirnya tidak tertarik untuk menonton film-film tersebut. Sementara itu, film-film dengan jumlah reviewer yang banyak, jarang mendapatkan review jelek, kemungkinan karena film-film ini memang bagus dan banyak ditonton, sehingga para penontonnya juga memberikan review positif.
+
+------------------------------------------------------------------------
+
+Selanjutnya mari kita lihat pergerakan jumlah film tiap tahunnya berdasarkan kategori apakah film tersebut *fresh* atau *rotten*. Untuk itu mari kita buat suatu kolom baru dalam dataframe kita yang bernama `tomatometer`. Sesuai keterangan pada laman Rotten Tomatoes mengenai [Tomatometer](https://www.rottentomatoes.com/about#whatisthetomatometer), kolom ini akan kita isi dengan kata "Fresh" apabila nilai `critic_score` \> 60 dan "Rotten" jika nilai `critic_score` \< 60.
+
+```{r}
+rt_clean$tomatometer <- ifelse(test = rt_clean$critic_score >= 60, 
+                               yes = "Fresh",
+                               no = "Rotten")
+
+# melihat 5 data random dari tomatometer
+sample(rt_clean$tomatometer, size = 5)
+```
+
+Kemudian kita buat tabel frekuensi dari `year` dan `tomatometer` menggunakan fungsi `table()` yang kemudian kita konversi ke bentuk dataframe.
+
+```{r}
+year_meter <- as.data.frame(table(rt_clean$year, rt_clean$tomatometer))
+head(year_meter)
+```
+
+Terlihat bahwa `Var1` yang berisi tahun justru bertipe data factor, kita perlu mengganti tipe datanya menjadi integer kembali. Untuk dapat mencapainya, kita perlu mengubah tipe datanya ke character terlebih dahulu sebelum diubah ke tipe integer.
+
+```{r}
+year_meter$Var1 <- as.integer(as.character(year_meter$Var1))
+class(year_meter$Var1)
+```
+
+Selanjutnya kita dapat langsung melakukan visualisasi! Karena kita akan membedakan warna plot berdasarkan isi dari `Var2`, maka kita akan memasukkan `Var2` ke dalam parameter `color` dalam *aesthetic mapping* `geom_line()`.
+
+```{r}
+ggplot(data = year_meter, mapping = aes(x = Var1, y = Freq)) +
+  geom_line(mapping = aes(color = Var2)) +
+  
+  labs(x = "Year",
+       y = "Amount of Film/TV Show",
+       title = "Rotten Tomatoes: Amount of Film by Year",
+       subtitle = "Fresh vs. Rotten\nYear of 1919 to 2020") +
+  
+  theme_light()
+```
+
+Mari perbesar pula ukuran garis agar plot terlihat lebih jelas, dengan mengisi parameter `size` dalam `geom_line()`. Kemudian mari kita ubah judul legenda untuk warna garis dari "Var2" menjadi "Tomatometer" dengan mengisi parameter `color` pada fungsi `labs()`.
+
+Selain itu, untuk lebih merepresentasikan warna tomat segar dan tomat busuk, mari kita ubah warna garis pada plot kita menjadi `tomato` untuk kategori Fresh dan `dark grey` untuk kategori Rotten. Hal ini dapat dilakukan dengan menambahkan warna-warna tersebut dalam fungsi `scale_color_manual()`.
+
+```{r}
+ggplot(data = year_meter, mapping = aes(x = Var1, y = Freq)) +
+  geom_line(mapping = aes(color = Var2), size = 1) +
+  
+  labs(x = "Year",
+       y = "Amount of Film/TV Show",
+       color = "Tomatometer®",
+       title = "Rotten Tomatoes: Amount of Film by Year",
+       subtitle = "Fresh vs. Rotten\nYear of 1919 to 2020") +
+  
+  scale_color_manual(values = c("tomato", "dark grey")) +
+  
+  theme_light()
+```
+
+Dapat kita lihat bahwa sepanjang tahun 1919 s.d. 2020, jumlah film yang *fresh* selalu lebih banyak daripada jumlah film yang *rotten*. Selain itu, jumlah film yang *fresh* juga semakin meningkat seiring berjalannya tahun. Bahkan menuju tahun 2020, jumlah film yang tergolong \`*fresh* jauh melebihi jumlah film-film *rotten*. Hal ini menunjukkan bahwa seiring perkembangan zaman, semakin banyak film-film berkualitas yang diproduksi.
+
+# Conclusion
+
+Kali ini kita telah berhasil membuat beragam visualiasai data dari situs Rotten Tomatoes. Dari visualisasi-visualisasi tersebut, banyak informasi yang dapat kita ambil, seperti adanya perbedaan distribusi penilaian oleh kritikus dibandingkan dengan penonton umum, serta adanya tren peningkatan jumlah film berkualitas seiring perkembangan zaman. Hasil visualisasi yang telah kita buat menujukkan bahwa visualisasi data sangat bermanfaat dalam mempermudah kita maupun audiens dalam menarik dan menerima informasi dari data.
