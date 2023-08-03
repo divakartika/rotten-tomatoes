@@ -1,5 +1,5 @@
 # rotten-tomatoes
- Rotten Tomatoes Data Visualization
+Published Article: [Rotten Tomatoes Data Visualization](https://rpubs.com/divakartika/rotten-tomatoes)
 
 ## Introduction
 
